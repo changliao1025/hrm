@@ -1,0 +1,13 @@
+# opts.jig config. file; created by JIGSAW's PYTHON interface 
+  VERBOSITY=1
+  INIT_FILE=/qfs/people/liao313/workspace/python/hrm/data/output/tin/tmp/init.msh
+  GEOM_FILE=/qfs/people/liao313/workspace/python/hrm/data/output/tin/tmp/geom.msh
+  HFUN_FILE=/qfs/people/liao313/workspace/python/hrm/data/output/tin/tmp/spac.msh
+  HFUN_SCAL=absolute
+  HFUN_HMAX=200.0
+  HFUN_HMIN=10.0
+  MESH_FILE=/qfs/people/liao313/workspace/python/hrm/data/output/tin/tmp/mesh.msh
+  MESH_DIMS=2
+  OPTM_ITER=64
+  OPTM_QTOL=1e-05
+  OPTM_QLIM=0.95
