@@ -26,9 +26,6 @@ from pyearth.visual.formatter import OOMFormatter
 from pyearth.visual.map.zebra_frame import zebra_frame
 from pyearth.visual.map.map_servers import StadiaStamen, EsriTerrain, EsriHydro, Stadia_terrain_images, Esri_terrain_images, Esri_hydro_images
 
-import requests
-from PIL import Image
-from io import BytesIO
 import shapely.geometry as sgeom
 
 iYear_current = datetime.datetime.now().year
@@ -86,8 +83,7 @@ def map_vector_point_file(iFiletype_in,
     pSRS_wgs84 = ccrs.PlateCarree()  # for latlon data only
     pSRS_geodetic = ccrs.Geodetic()
 
-    iCount0 = 0
-    iCount1 = 0
+
 
     if iFiletype_in == 1:  # geojson
         pDriver = ogr.GetDriverByName('GeoJSON')
@@ -315,7 +311,6 @@ def map_vector_point_file(iFiletype_in,
     ax.set_global()
 
 
-
     if iFlag_discrete ==1:
         aIndex = np.linspace(0,1,nValue_field)
         prng = np.random.RandomState(1234567890)
@@ -325,8 +320,8 @@ def map_vector_point_file(iFiletype_in,
     else:
         pCmap = plt.colormaps[sColormap]
 
-    iSize_max = 150.0
-    iSize_min = 50.0
+    iSize_max = 100.0
+    iSize_min = 20.0
 
     if aExtent_in is None:
         marginx = (dLon_max - dLon_min) / 20
@@ -419,15 +414,7 @@ def map_vector_point_file(iFiletype_in,
         print('No internet connection')
         dAlpha = 1.0
 
-    #ax.add_feature(cfeature.LAKES, alpha=0.5)
-    #rivers = cfeature.NaturalEarthFeature(
-    #    category='physical',
-    #    name='rivers_lake_centerlines',
-    #    scale='10m',
-    #    edgecolor='blue',
-    #    facecolor='none',
-    #    linewidth=1.0)
-    #ax.add_feature(rivers)
+
 
 
     aPoint_x = list()
@@ -436,189 +423,55 @@ def map_vector_point_file(iFiletype_in,
     aSize = list()
     aMarker = list()
 
-    iFlag_special = 1
-
-    aMarker_label = {
-    'o': 'MPAS mesh-based better',
-    '^': 'DRT mesh-based better',
-    's': 'The same',
-    }
 
     #add the boundary as a special case
-    aName= list()
-
-    sRegion = 'amazon'
-
-    if sRegion == 'sag':
-        aName.append('15908000')
-        aName.append('15905100')
-        aName.append('bl_lvishak_dss2')
-        aName.append('happyvalley_dss3')
-        aName.append('nr_mp318_dss4')
-
-    else:
-        if sRegion == 'susquehanna':
-            aName.append('US_0000794')
-            aName.append('US_0000844')
-            aName.append('US_0000919')
-        else:
-
-            #amazon
-            aName.append('BR_0000002')
-            aName.append('BR_0000015')
-            aName.append('BR_0000137')
-            aName.append('BR_0000215')
-            aName.append('BR_0000244')
-
-    aX_selected = list()
-    aY_selected = list()
-    if iFlag_special ==1:
-        from matplotlib.patches import Polygon
-        from matplotlib.collections import PatchCollection
-        aPolygon = list()
-        if sRegion == 'sag':
-            sFilename_boundary = '/qfs/people/liao313/data/hexwatershed/sag/vector/hydrology/boundary.geojson'
-            sFilename_ladder = '/qfs/people/liao313/workspace/python/liao-etal_2023_mosart_joh/figures/sag/ladder.geojson'
-        else:
-            if sRegion == 'susquehanna':
-                sFilename_boundary = '/qfs/people/liao313/data/hexwatershed/susquehanna/vector/hydrology/boundary_wgs.geojson'
-                sFilename_ladder = '/qfs/people/liao313/workspace/python/liao-etal_2023_mosart_joh/figures/susquehanna/ladder.geojson'
-            else:
-                sFilename_boundary = '/qfs/people/liao313/data/hexwatershed/amazon/vector/hydrology/amazon_boundary.geojson'
-                sFilename_ladder = '/qfs/people/liao313/workspace/python/liao-etal_2023_mosart_joh/figures/amazon/ladder.geojson'
-        pDataset_boundary = pDriver.Open(sFilename_boundary, gdal.GA_ReadOnly)
-        pLayer_boundary = pDataset_boundary.GetLayer(0)
-        for pFeature in pLayer_boundary:
-            pGeometry_in = pFeature.GetGeometryRef()
-            sGeometry_type = pGeometry_in.GetGeometryName()
-            if sGeometry_type == 'POLYGON':
-                aCoords_gcs = get_geometry_coordinates(pGeometry_in)
-                aPolygon.append(aCoords_gcs[:, 0:2])
-            else:
-                if sGeometry_type == 'MULTIPOLYGON':
-                    for j in range(pGeometry_in.GetGeometryCount()):
-                        pPolygon = pGeometry_in.GetGeometryRef(j)
-                        aCoords_gcs = get_geometry_coordinates(pPolygon)
-                        aPolygon.append(aCoords_gcs[:, 0:2])
-        if len(aPolygon) > 0:
-            aPatch = [Polygon(poly, closed=True) for poly in aPolygon]
-            pPC = PatchCollection(aPatch, alpha=0.8, edgecolor='black',
-                                      facecolor='none', linewidths=1.0,
-                                      transform=pProjection_data)
-            ax.add_collection(pPC)
-
-        aPolyline = list()
-        pDataset_ladder = pDriver.Open(sFilename_ladder, gdal.GA_ReadOnly)
-        pLayer_ladder = pDataset_ladder.GetLayer(0)
-        for pFeature in pLayer_ladder:
-            pGeometry_in = pFeature.GetGeometryRef()
-            sGeometry_type = pGeometry_in.GetGeometryName()
-            if sGeometry_type == 'LINESTRING':
-                aCoords_gcs = get_geometry_coordinates(pGeometry_in)
-                aCoords_gcs = aCoords_gcs[:,0:2]
-                nvertex = len(aCoords_gcs)
-                codes = np.full(nvertex, mpl.path.Path.LINETO, dtype=int )
-                codes[0] = mpl.path.Path.MOVETO
-                path = mpl.path.Path(aCoords_gcs, codes)
-                x, y = zip(*path.vertices)
-                aPolyline.append(list(zip(x, y)))
-
-        custom_dash_pattern = (0, (5, 3))  # 5 points on, 10 points off
-
-        pLC = LineCollection(aPolyline,  alpha=0.5, edgecolor='cornflowerblue',
-                         facecolor='none', linewidths=3.0, linestyles=custom_dash_pattern, transform=pProjection_data)
-
-        ax.add_collection(pLC)
-
     for pFeature in pLayer:
         pGeometry_in = pFeature.GetGeometryRef()
         sGeometry_type = pGeometry_in.GetGeometryName()
-        sName = pFeature.GetField('name')
         if iFlag_color ==1:
             dValue_color = pFeature.GetField(sField_color)
-            if iFlag_special == 1:
-                dValue_color2 = pFeature.GetField('nse1') #special for case study
+
         if iFlag_size ==1:
-            dValue_thickness = pFeature.GetField(sField_size)
+            dValue_thickness = float(pFeature.GetField(sField_size))
 
 
         if sGeometry_type =='POINT':
             aCoords_gcs = get_geometry_coordinates(pGeometry_in)
             aPoint_x.append(aCoords_gcs[0,0])
             aPoint_y.append(aCoords_gcs[0,1])
-            if sName in aName:
-            #aName.append(sName)
-                aX_selected.append(aCoords_gcs[0,0])
-                aY_selected.append(aCoords_gcs[0,1])
 
             if iFlag_color ==1:
-                if iFlag_special == 1:
-                    iValue = (dValue_color2 - dValue_color)/np.max([np.abs(dValue_color), np.abs(dValue_color2)])
-                    if np.abs(iValue)<0.01 : #equal
-                        iColor_index =  (dValue_color2-dValue_min ) /(dValue_max - dValue_min )
-                        iMarker = 's'
-                        #color = 'white'
-                    else:
-                        if iValue > 0:
-                            iCount1 = iCount1 + 1
-                            iColor_index =  (dValue_color2-dValue_min ) /(dValue_max - dValue_min )
-                            iMarker = 'o'
-                        else:
-                            iCount0 = iCount0 + 1
-                            iColor_index =   (dValue_color-dValue_min ) /(dValue_max - dValue_min )
-                            iMarker = '^'
 
+                if iFlag_discrete ==1:
+                    iValue = dValue_color
+                    iColor_index = np.where(aValue_field_color == iValue)[0][0]
                     color = pCmap(iColor_index)
                 else:
-                    if iFlag_discrete ==1:
-                        iValue = dValue_color
-                        iColor_index = np.where(aValue_field_color == iValue)[0][0]
-                        color = pCmap(iColor_index)
-                    else:
-                        color_index =  (dValue_color-dValue_min ) /(dValue_max - dValue_min )
-                        color = pCmap(color_index)
+                    color_index =  (dValue_color-dValue_min ) /(dValue_max - dValue_min )
+                    color = pCmap(color_index)
 
             else:
                 color = 'blue'
             aColor.append(color)
             if iFlag_size ==1:
-                iThickness = remap( dValue_thickness, dValue_size_min, dValue_size_max, iSize_min, iSize_max )
+                iThickness = float(remap( dValue_thickness, dValue_size_min, dValue_size_max, iSize_min, iSize_max ))
             else:
                 iThickness = 1.0
 
             aSize.append(iThickness)
+            iMarker = 'o'
             aMarker.append(iMarker)
             lID = lID + 1
 
-    print(iCount0, iCount1)
 
-    #pPC = PathCollection(aPoint, alpha=dAlpha, edgecolor=aColor,
-    #                             facecolor=aColor, transform=pProjection_data)
-    #ax.add_collection(pPC)
-    marker_groups = defaultdict(lambda: {'x': [], 'y': [], 'color': [], 'size': []})
-    for x, y, color, size, marker in zip(aPoint_x, aPoint_y, aColor, aSize, aMarker):
-        marker_groups[marker]['x'].append(x)
-        marker_groups[marker]['y'].append(y)
-        marker_groups[marker]['color'].append(color)
-        marker_groups[marker]['size'].append(size)
-    for marker, group in marker_groups.items():
-        ax.scatter(group['x'], group['y'],
-                    #c=group['color'],
-                    facecolor=group['color'],
-                    edgecolor='black',  # Edge color
-                    s=group['size'],
-                    alpha=dAlpha,
-                    transform=pProjection_data,
-                      marker=marker)
 
-    #scatter = ax.scatter(aPoint_x, aPoint_y, c=aColor, s=aSize, alpha=dAlpha, transform=pProjection_data, marker=aMarker)
+
+    scatter = ax.scatter(aPoint_x, aPoint_y, c=aColor, s=aSize, alpha=dAlpha, transform=pProjection_data)
     #add label for the selected points
     # Define the offsets
     x_offset = 0.1  # Adjust as needed
     y_offset = 0.0  # Adjust as needed
 
-    for i in range(len(aX_selected)):
-        ax.text(aX_selected[i] + x_offset, aY_selected[i] + y_offset, aName[i], fontsize=10, color='red', transform=pProjection_data)
 
     ax.set_extent(aExtent, crs = pSRS_wgs84)
     #gridline
@@ -655,14 +508,7 @@ def map_vector_point_file(iFiletype_in,
                     transform=ax.transAxes,
                     color='black', fontsize=iFont_size-2 )
     else:
-        # Create proxy artists for the legend
-        unique_markers = list(marker_groups.keys())
-        #reorder them and put square on the last
-        unique_markers = [marker for marker in unique_markers if marker != 's'] + ['s']
-        proxy_artists = [plt.Line2D([0], [0], marker=marker, color='w', markerfacecolor='k', markersize=10) for marker in unique_markers]
-        labels = [aMarker_label.get(marker, marker) for marker in unique_markers]
-        # Add legend to the plot
-        ax.legend(proxy_artists, labels, loc=sLocation_legend, fontsize=iFont_size-2)
+        pass
 
     if iFlag_colorbar == 1:
         fig.canvas.draw()

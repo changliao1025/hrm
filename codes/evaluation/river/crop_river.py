@@ -1,0 +1,8 @@
+from pyearth.toolbox.analysis.extract.clip_vector_by_polygon_file import clip_vector_by_polygon_file
+from pyearth.toolbox.conversion.convert_vector_to_geojson import convert_vector_to_geojson
+sFilename_vector_in='/compyfs/liao313/04model/pyflowline/global/flowline_hydroshed_simplified_1.0E4.geojson'
+sFilename_polygon_in='/people/liao313/data/hexwatershed/mississippi/vector/mississippi_boundary.geojson'
+sFilename_vector_out='/people/liao313/data/hexwatershed/mississippi/vector/flowline_hydroshed_simplified_1.0E4.geojson'
+
+clip_vector_by_polygon_file(sFilename_vector_in, sFilename_polygon_in, sFilename_vector_out)
+

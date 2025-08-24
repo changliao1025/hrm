@@ -11,16 +11,18 @@ from matplotlib.collections import PatchCollection
 from matplotlib.patches import Polygon
 import matplotlib.patches as mpatches
 import cartopy.crs as ccrs
+import cartopy.feature as cfeature
 from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 
 from pyearth.system.define_global_variables import *
 from pyearth.visual.map.zebra_frame import zebra_frame
 from pyearth.gis.location.get_geometry_coordinates import get_geometry_coordinates
 from pyearth.visual.formatter import OOMFormatter
-from pyearth.visual.map.map_servers import StadiaStamen
 from pyearth.visual.map.map_servers import StadiaStamen, EsriTerrain, EsriHydro, Stadia_terrain_images, Esri_terrain_images, Esri_hydro_images
 from pyproj import Geod
 import shapely.geometry as sgeom
+from shapely.geometry import Point, Polygon as ShapelyPolygon
+from shapely.ops import unary_union
 #osr.UseExceptions()
 #use agg and backend
 #mpl.use('agg')
@@ -30,15 +32,20 @@ sYear = str(iYear_current)
 
 def map_vector_polygon_file(iFiletype_in,
                             sFilename_in,
+                            dLongitude_highlight_in=None,
+                            dLatitude_highlight_in=None,
                             sFilename_output_in=None,
+                            iFlag_set_extent_in=None,
                             iFlag_scientific_notation_colorbar_in=None,
                             iFlag_color_in = None,
+                            iFlag_coastline_in=None,
                             iFlag_colorbar_in=None,
                             iFlag_zebra_in=None,
                             iFlag_fill_in=None,
                             iFont_size_in=None,
                             iFlag_discrete_in=None,
                             iFlag_filter_in = None,
+                            iFlag_filter_land_ocean_in = None,
                             iFlag_openstreetmap_in = None,
                             iFlag_openstreetmap_level_in = None,
                             iFlag_terrain_image_in = None,
@@ -121,6 +128,11 @@ def map_vector_polygon_file(iFiletype_in,
     else:
         iSize_y = 8
 
+    if iFlag_set_extent_in is not None:
+        iFlag_set_extent = iFlag_set_extent_in
+    else:
+        iFlag_set_extent = 0
+
     if iFont_size_in is not None:
         iFont_size = iFont_size_in
     else:
@@ -129,7 +141,7 @@ def map_vector_polygon_file(iFiletype_in,
     if iThickness_in is not None:
         iThickness = iThickness_in
     else:
-        iThickness = 0.25
+        iThickness = 1.0
 
     if iFlag_color_in is not None:
         iFlag_color = iFlag_color_in
@@ -155,6 +167,11 @@ def map_vector_polygon_file(iFiletype_in,
         iFlag_filter = iFlag_filter_in
     else:
         iFlag_filter = 0
+
+    if iFlag_filter_land_ocean_in is not None:
+        iFlag_filter_land_ocean = iFlag_filter_land_ocean_in
+    else:
+        iFlag_filter_land_ocean = 0
 
     if iFlag_scientific_notation_colorbar_in is not None:
         iFlag_scientific_notation_colorbar = iFlag_scientific_notation_colorbar_in
@@ -302,11 +319,12 @@ def map_vector_polygon_file(iFiletype_in,
     if pProjection_data_in is not None:
         pProjection_data = pProjection_data_in
     else:
-        pProjection_data = pSRS_wgs84
+        pProjection_data = pSRS_geodetic
 
 
     #pProjection_map._threshold /= 1.0E6
     ax = fig.add_axes([0.08, 0.1, 0.62, 0.7], projection=pProjection_map)
+    ax.set_global()
 
     if iFlag_discrete == 1:
         aIndex = np.linspace(0,1,nValue)
@@ -343,12 +361,32 @@ def map_vector_polygon_file(iFiletype_in,
 
     print(aExtent)
     minx,  maxx, miny, maxy = aExtent
-    ax.set_extent(aExtent, crs = pSRS_wgs84)
+    if iFlag_set_extent == 1:
+        ax.set_extent(aExtent, crs = pSRS_wgs84)
     if iFlag_filter == 1:
         pLayer.SetSpatialFilterRect(minx-1, maxx+1, miny-1, maxy+1)
 
-    ax.set_extent(aExtent, crs = pSRS_wgs84)
-    ax.coastlines(linewidth=0.5, color='k', resolution='10m')
+    if iFlag_set_extent == 1:
+        ax.set_extent(aExtent, crs = pSRS_wgs84)
+
+    if iFlag_coastline_in is not None and iFlag_coastline_in == 1:
+        ax.coastlines(linewidth=0.5, color='k', resolution='10m')
+
+    # Get land geometry for land/ocean filtering if needed
+    land_geom = None
+    if iFlag_filter_land_ocean != 0:
+        try:
+            # Get land features from Natural Earth
+            land_feature = cfeature.NaturalEarthFeature('physical', 'land', '10m')
+            land_geoms = list(land_feature.geometries())
+            land_geom = unary_union(land_geoms)
+            if iFlag_filter_land_ocean == 1:
+                print("Land geometry loaded for ocean filtering (keeping land polygons)")
+            elif iFlag_filter_land_ocean == 2:
+                print("Land geometry loaded for land filtering (keeping ocean polygons)")
+        except Exception as e:
+            print(f"Could not load land geometry for land/ocean filtering: {e}")
+            iFlag_filter_land_ocean = 0
     try:
         dAlpha = 1.0
         if iFlag_openstreetmap_in is not None and iFlag_openstreetmap_in == 1:
@@ -408,6 +446,7 @@ def map_vector_polygon_file(iFiletype_in,
 
     aPolygon = list()
     aColor_index=list()
+    aFacecolor = list()
     for pFeature in pLayer:
         pGeometry_in = pFeature.GetGeometryRef()
         sGeometry_type = pGeometry_in.GetGeometryName()
@@ -439,14 +478,62 @@ def map_vector_polygon_file(iFiletype_in,
                 pPolygon = pGeometry_in.GetGeometryRef(i)
                 aCoords_gcs = get_geometry_coordinates(pPolygon)
                 aCoords_gcs=aCoords_gcs[:,0:2]
+
+                # Check if polygon should be filtered based on land/ocean
+                if iFlag_filter_land_ocean != 0 and land_geom is not None:
+                    # Create shapely polygon from coordinates
+                    shapely_poly = ShapelyPolygon(aCoords_gcs)
+                    # Check if polygon intersects with land
+                    intersects_land = shapely_poly.intersects(land_geom)
+
+                    if iFlag_filter_land_ocean == 1:  # Filter ocean (keep land)
+                        if not intersects_land:
+                            continue  # Skip this polygon as it's in the ocean
+                    elif iFlag_filter_land_ocean == 2:  # Filter land (keep ocean)
+                        if intersects_land:
+                            continue  # Skip this polygon as it's on land
+
                 aColor_index.append(iColor_index)
                 aPolygon.append(aCoords_gcs)
         else:
             if sGeometry_type == 'POLYGON':
                 aCoords_gcs = get_geometry_coordinates(pGeometry_in)
                 aCoords_gcs=aCoords_gcs[:,0:2]
-                aColor_index.append(iColor_index)
-                aPolygon.append(aCoords_gcs)
+
+                # Check if polygon should be filtered based on land/ocean
+                if iFlag_filter_land_ocean != 0 and land_geom is not None:
+                    # Create shapely polygon from coordinates
+                    shapely_poly = ShapelyPolygon(aCoords_gcs)
+                    # Check if polygon intersects with land
+                    intersects_land = shapely_poly.intersects(land_geom)
+
+                    if iFlag_filter_land_ocean == 1:  # Filter ocean (keep land)
+                        if not intersects_land:
+                            continue  # Skip this polygon as it's in the ocean
+                    elif iFlag_filter_land_ocean == 2:  # Filter land (keep ocean)
+                        if intersects_land:
+                            continue  # Skip this polygon as it's on land
+
+                #check if the polygon contains the highlight point
+                #create a point using gdal
+                if dLongitude_highlight_in is not None and dLatitude_highlight_in is not None:
+                    pPoint = ogr.Geometry(ogr.wkbPoint)
+                    pPoint.AddPoint(dLongitude_highlight_in, dLatitude_highlight_in)
+                    if pPoint.Within(pGeometry_in) or pGeometry_in.Intersects(pPoint):
+                    #if iFlag_contains == 1:
+                        #highlight the polygon
+                        #print('highlight')
+                        aColor_index.append(iColor_index)
+                        aPolygon.append(aCoords_gcs)
+                        aFacecolor.append('red')
+                    else:
+                        aColor_index.append(iColor_index)
+                        aPolygon.append(aCoords_gcs)
+                        aFacecolor.append('none')
+                else:
+                    aColor_index.append(iColor_index)
+                    aPolygon.append(aCoords_gcs)
+                    aFacecolor.append('none')
 
     aColor_index = np.array(aColor_index)
     #flatten the array as 1D
@@ -457,13 +544,13 @@ def map_vector_polygon_file(iFiletype_in,
         if iFlag_fill == True:
             pPC = PatchCollection(aPatch, alpha=dAlpha,
                                   edgecolor='none',
-                                  facecolor=aColor,
+                                  facecolor=aFacecolor,
                                   linewidths=iThickness,
                                   transform=pProjection_data)
         else:
             pPC = PatchCollection(aPatch, alpha=dAlpha,
                                   edgecolor=aColor,
-                                  facecolor='none',
+                                  facecolor=aFacecolor,
                                   linewidths=iThickness,
                                   transform=pProjection_data)
     else:
@@ -478,16 +565,19 @@ def map_vector_polygon_file(iFiletype_in,
         else:
             pPC = PatchCollection(aPatch, alpha=dAlpha,
                                   edgecolor=sColor,
-                                  facecolor='none',
+                                  facecolor=aFacecolor,
                                   linewidths=iThickness,
                                   transform=pProjection_data)
     ax.add_collection(pPC)
 
-    ax.set_extent(aExtent, crs = pSRS_wgs84)
+    if iFlag_set_extent == 1:
+        ax.set_extent(aExtent, crs = pSRS_wgs84)
+
+
     gl = ax.gridlines(crs=ccrs.PlateCarree(), draw_labels=True,
                       linewidth=1, color='gray', alpha=0.5, linestyle='--',
-                      xlocs=np.arange(minx, maxx+(maxx-minx)/9, (maxx-minx)/8),
-                      ylocs=np.arange(miny, maxy+(maxy-miny)/9, (maxy-miny)/8))
+                      xlocs=np.arange(minx, min(180, maxx+(maxx-minx)/9), (maxx-minx)/8),
+                      ylocs=np.arange(miny, min(90, maxy+(maxy-miny)/9), (maxy-miny)/8))
     gl.xformatter = LONGITUDE_FORMATTER
     gl.yformatter = LATITUDE_FORMATTER
     gl.xlocator = mpl.ticker.MaxNLocator(4)
@@ -528,7 +618,8 @@ def map_vector_polygon_file(iFiletype_in,
         ax.set_extent(aExtent, crs = pSRS_wgs84)
         ax.zebra_frame(crs=pSRS_wgs84, iFlag_outer_frame_in=1)
 
-    ax.set_extent(aExtent, crs = pSRS_wgs84)
+    if iFlag_set_extent == 1:
+        ax.set_extent(aExtent, crs = pSRS_wgs84)
 
     if iFlag_colorbar == 1:
         fig.canvas.draw()

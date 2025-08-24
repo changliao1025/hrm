@@ -1,6 +1,8 @@
 import os
 import datetime
 import numpy as np
+import textwrap
+from urllib.error import URLError
 from osgeo import  osr, gdal, ogr
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -15,6 +17,10 @@ from pyearth.gis.location.get_geometry_coordinates import get_geometry_coordinat
 from pyearth.visual.formatter import OOMFormatter
 from pyearth.visual.map.zebra_frame import zebra_frame
 from pyearth.toolbox.math.stat.remap import remap
+from pyearth.visual.map.map_servers import StadiaStamen, EsriTerrain, EsriHydro, Stadia_terrain_images, Esri_terrain_images, Esri_hydro_images
+
+import shapely.geometry as sgeom
+
 
 iYear_current = datetime.datetime.now().year
 sYear = str(iYear_current)
@@ -32,6 +38,7 @@ def map_vector_polyline_file(iFiletype_in,
                              iFlag_discrete_in=None,
                              iFlag_openstreetmap_in = None,
                              iFlag_openstreetmap_level_in = None,
+                              iFlag_terrain_image_in = None,
                              iDPI_in = None,
                              iSize_x_in = None,
                              iSize_y_in = None,
@@ -284,9 +291,10 @@ def map_vector_polyline_file(iFiletype_in,
         if dValue_max == dValue_min:
             return
 
-    aValue_field_thickness = np.array(aValue_field_thickness)
-    dValue_thickness_max = np.max(aValue_field_thickness)
-    dValue_thickness_min = np.min(aValue_field_thickness)
+    if iFlag_thickness == 1:
+        aValue_field_thickness = np.array(aValue_field_thickness)
+        dValue_thickness_max = np.max(aValue_field_thickness)
+        dValue_thickness_min = np.min(aValue_field_thickness)
 
     if pProjection_map_in is not None:
         pProjection_map = pProjection_map_in
@@ -348,62 +356,66 @@ def map_vector_polyline_file(iFiletype_in,
     if iFlag_filter == 1:
         pLayer.SetSpatialFilterRect(minx, miny, maxx, maxy)
 
-    if iFlag_openstreetmap_in is not None and iFlag_openstreetmap_in == 1:
-        if iFlag_openstreetmap_level_in is not None:
-            iFlag_openstreetmap_level = iFlag_openstreetmap_level_in
+    try:
+        dAlpha = 1.0
+        if iFlag_openstreetmap_in is not None and iFlag_openstreetmap_in == 1:
+            from cartopy.io.img_tiles import OSM
+            if iFlag_openstreetmap_level_in is not None:
+                iFlag_openstreetmap_level = iFlag_openstreetmap_level_in
+            else:
+                iFlag_openstreetmap_level = 9
+                pass
+
+            osm_tiles = OSM()
+            #Add the OSM image to the map
+            ax.add_image(osm_tiles, iFlag_openstreetmap_level) #, alpha=0.5
+            sLicense_info = "© OpenStreetMap contributors "+ sYear + "." + " Distributed under the Open Data Commons Open Database License (ODbL) v1.0."
+            sLicense_info_wrapped = "\n".join(textwrap.wrap(sLicense_info, width=60))
+            ax.text(0.5, 0.05, sLicense_info_wrapped, transform=ax.transAxes, ha='center', va='center', fontsize=6,
+                    color='gray', bbox=dict(facecolor='white', edgecolor='black', boxstyle='round,pad=0.3'))
+
+            #we also need to set transparency for the image to be added
+            dAlpha = 0.9
         else:
-            iFlag_openstreetmap_level = 9
             pass
 
-        osm_tiles = OSM()
-        #Add the OSM image to the map
-        ax.add_image(osm_tiles, iFlag_openstreetmap_level)
-        sLicense_info = "© OpenStreetMap contributors "+ sYear + "." + " Distributed under the Open Data Commons Open Database License (ODbL) v1.0."
-        ax.text(0.5, 0.05, sLicense_info, transform=ax.transAxes, ha='center', va='center', fontsize=6,
-                color='gray', bbox=dict(facecolor='white', edgecolor='black', boxstyle='round,pad=0.3'))
-
-        #we also need to set transparency for the image to be added
-        dAlpha = 0.5
-    else:
+        if iFlag_terrain_image_in is not None and iFlag_terrain_image_in == 1:
+            if iFlag_openstreetmap_level_in is not None:
+                iFlag_zoom_level = iFlag_openstreetmap_level_in
+            else:
+                iFlag_zoom_level = 8
+                pass
+            #satellite_tiles = cimgt.Stamen('terrain-background')
+            #stamen_terrain = StadiaStamen("terrain-background")
+            #ax.add_image(stamen_terrain, iFlag_zoom_level) #, alpha=0.5
+            # Add elevation data using ESRI tiles
+            esri_terrain = EsriTerrain()
+            esri_hydro = EsriHydro()
+            ll_target_domain = sgeom.box(minx, miny, maxx, maxy)
+            multi_poly = esri_hydro.crs.project_geometry(ll_target_domain, ccrs.PlateCarree())
+            target_domain = multi_poly.geoms[0]
+            #_, aExtent_stamen, _ = stamen_terrain.image_for_domain(target_domain, iFlag_zoom_level)
+            _, aExtent_terrain, _ = esri_terrain.image_for_domain(target_domain, iFlag_zoom_level)
+            _, aExtent_hydro, _ = esri_hydro.image_for_domain(target_domain, iFlag_zoom_level)
+            #img_stadia_terrain = Stadia_terrain_images(aExtent, iFlag_zoom_level)
+            img_esri_terrain  = Esri_terrain_images(aExtent, iFlag_zoom_level)
+            img_eari_hydro  = Esri_hydro_images(aExtent, iFlag_zoom_level)
+            #ax.imshow(img_stadia_terrain,  extent=aExtent_stamen, transform=stamen_terrain.crs, alpha=0.8)
+            ax.imshow(img_esri_terrain,  extent=aExtent_terrain, transform=esri_terrain.crs)
+            ax.imshow(img_eari_hydro,  extent=aExtent_hydro, transform=esri_hydro.crs)
+            #add the license information
+            sLicense_info = "© Stamen Design, under a Creative Commons Attribution (CC BY 3.0) license."
+            sLicense_info = "© Esri Hydro Reference Overlay"
+            sLicense_info_wrapped = "\n".join(textwrap.wrap(sLicense_info, width=60))
+            ax.text(0.5, 0.05, sLicense_info_wrapped, transform=ax.transAxes, ha='center', va='center', fontsize=6,
+                    color='gray', bbox=dict(facecolor='white', edgecolor='black', boxstyle='round,pad=0.3'))
+            dAlpha = 0.8
+        else:
+            pass
+    except URLError as e:
+        print('No internet connection')
         dAlpha = 1.0
 
-    iFlag_special = 1
-    sRegion = 'sag'
-    if iFlag_special == 1:
-        #add the boundary
-        from matplotlib.patches import Polygon
-        from matplotlib.collections import PatchCollection
-        aPolygon = list()
-        if sRegion == 'sag':
-            sFilename_boundary = '/qfs/people/liao313/data/hexwatershed/sag/vector/hydrology/boundary.geojson'
-            sFilename_ladder = '/qfs/people/liao313/workspace/python/liao-etal_2023_mosart_joh/figures/sag/ladder.geojson'
-        else:
-            if sRegion == 'susquehanna':
-                sFilename_boundary = '/qfs/people/liao313/data/hexwatershed/susquehanna/vector/hydrology/boundary_wgs.geojson'
-                sFilename_ladder = '/qfs/people/liao313/workspace/python/liao-etal_2023_mosart_joh/figures/susquehanna/ladder.geojson'
-            else:
-                sFilename_boundary = '/qfs/people/liao313/data/hexwatershed/amazon/vector/hydrology/amazon_boundary.geojson'
-                sFilename_ladder = '/qfs/people/liao313/workspace/python/liao-etal_2023_mosart_joh/figures/amazon/ladder.geojson'
-        pDataset_boundary = pDriver.Open(sFilename_boundary, gdal.GA_ReadOnly)
-        pLayer_boundary = pDataset_boundary.GetLayer(0)
-        for pFeature in pLayer_boundary:
-            pGeometry_in = pFeature.GetGeometryRef()
-            sGeometry_type = pGeometry_in.GetGeometryName()
-            if sGeometry_type == 'POLYGON':
-                aCoords_gcs = get_geometry_coordinates(pGeometry_in)
-                aPolygon.append(aCoords_gcs[:, 0:2])
-            else:
-                if sGeometry_type == 'MULTIPOLYGON':
-                    for j in range(pGeometry_in.GetGeometryCount()):
-                        pPolygon = pGeometry_in.GetGeometryRef(j)
-                        aCoords_gcs = get_geometry_coordinates(pPolygon)
-                        aPolygon.append(aCoords_gcs[:, 0:2])
-        if len(aPolygon) > 0:
-            aPatch = [Polygon(poly, closed=True) for poly in aPolygon]
-            pPC = PatchCollection(aPatch, alpha=0.8, edgecolor='black',
-                                      facecolor='none', linewidths=1.0,
-                                      transform=pProjection_data)
-            ax.add_collection(pPC)
 
     for pFeature in pLayer:
         pGeometry_in = pFeature.GetGeometryRef()
@@ -417,14 +429,6 @@ def map_vector_polyline_file(iFiletype_in,
             aCoords_gcs = get_geometry_coordinates(pGeometry_in)
             aCoords_gcs = aCoords_gcs[:,0:2]
             nvertex = len(aCoords_gcs)
-            #if nvertex == 2 :
-            #    dLon_label = 0.5 * (aCoords_gcs[0][0] + aCoords_gcs[1][0] )
-            #    dLat_label = 0.5 * (aCoords_gcs[0][1] + aCoords_gcs[1][1] )
-            #else:
-            #    lIndex_mid = int(nvertex/2)
-            #    dLon_label = aCoords_gcs[lIndex_mid][0]
-            #    dLat_label = aCoords_gcs[lIndex_mid][1]
-
             codes = np.full(nvertex, mpl.path.Path.LINETO, dtype=int )
             codes[0] = mpl.path.Path.MOVETO
             path = mpl.path.Path(aCoords_gcs, codes)
@@ -490,6 +494,10 @@ def map_vector_polyline_file(iFiletype_in,
 
     if iFlag_zebra ==1:
         ax.zebra_frame(crs=pSRS_wgs84, iFlag_outer_frame_in=1)
+
+    if  iFlag_title == 1:
+        sTitle_wrapped = "\n".join(textwrap.wrap(sTitle, width=50))
+        ax.set_title( sTitle_wrapped )
 
     ax.set_extent(aExtent, crs = pSRS_wgs84)
     if iFlag_colorbar == 1:

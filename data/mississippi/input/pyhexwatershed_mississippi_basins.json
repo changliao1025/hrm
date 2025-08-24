@@ -1,0 +1,19 @@
+[
+    {
+        "dLatitude_outlet_degree": 29.10721,
+        "dLongitude_outlet_degree": -89.26249,
+        "dAccumulation_threshold": 100000,
+        "dThreshold_small_river": 10000,
+        "iFlag_dam": 0,
+        "iFlag_remove_small_river": 1,
+        "iFlag_debug":1,
+        "iFlag_disconnected": 0,
+        "lBasinID": 1,
+        "sFilename_dam": "/qfs/people/liao313/data/hexwatershed/susquehanna/auxiliary/ICoM_dams.csv",
+        "sFilename_flowline_filter": "/qfs/people/liao313/data/hexwatershed/mississippi/vector/flowline_hydroshed_simplified_1.0E4.geojson",
+        "sFilename_flowline_raw": "/qfs/people/liao313/data/hexwatershed/susquehanna/vector/hydrology/allflowline.shp",
+        "sFilename_flowline_topo": "/qfs/people/liao313/data/hexwatershed/susquehanna/auxiliary/flowline.csv"
+
+
+    }
+]

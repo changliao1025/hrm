@@ -168,3 +168,10 @@ cython_debug/
 *.info
 *.geojson
 *.msh
+*.shp
+*.shx
+*.prj
+*.dbf
+*.geoparquet
+*.parquet
+core.*
