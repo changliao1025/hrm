@@ -25,8 +25,6 @@ dLongitude_highlight = -119.30730
 dLatitude_highlight = 45.93315
 aExtent = [-119.30730 - dBuffer, -119.30730 + dBuffer, 45.93315 - 0.5*dBuffer, 45.93315 + dBuffer]
 
-
-
 aFiletype_in = [3, 2, 1]
 sFilename_mesh= '/compyfs/liao313/04model/pyflowline/conus/pyflowline20241201019/mpas.geojson'
 sFilename_river_network = '/compyfs/liao313/04model/pyhexwatershed/mississippi/pyflowline20241201004/pyflowline/00000001/flowline_filter.geojson'
